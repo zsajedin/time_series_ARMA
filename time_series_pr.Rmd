@@ -1,0 +1,268 @@
+---
+title: "Time_series_presentation_v1"
+author: "Zahra Sajedinia"
+date: '2022-06-27'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r }
+library(TSA)
+library(forecast)
+library(quantmod) #stock data
+
+```
+
+```{r }
+# Get stock data
+
+getSymbols("FORD",src="yahoo",from="2014-01-01",to = "2014-12-31")
+head(FORD)
+plot(FORD$FORD.Close, main="Closing Stock Price for FORD")
+
+time_series_data = FORD$FORD.Close
+
+
+training_data = time_series_data[1:200]
+test_data = time_series_data[201:221]
+
+#plot(time_series_data,
+#     type="l",
+#     xlab="Time", ylab="Price", main="Closing Stock Price for FORD")
+```
+
+```{r }
+# Simple method (Regression)
+
+time_predictor = 1:200
+linear_model = lm(training_data~time_predictor)
+summary(linear_model)
+
+test_predictions = linear_model$coefficients[1] + linear_model$coefficients[2]*(201:221)
+
+plot(as.numeric(test_data$FORD.Close),
+     type="l",
+     xlab="Time", ylab="Price", main="Closing Stock Price for FORD: Test Data",
+     ylim=c(1,1.4))
+points(test_predictions, type="l", lty=2)
+legend(1,1.1,lty=c(1,2),legend=c("Observed Data", "Model Predictions"))
+       
+
+all_predictions = linear_model$coefficients[1] + linear_model$coefficients[2]*(1:221)
+
+plot(as.numeric(time_series_data[1:221]),
+     type="l",
+     xlab="Time", ylab="Price", main="Closing Stock Price for FORD")
+points(all_predictions, type="l", lty=2)
+abline(v=201)
+legend(0,1.4,lty=c(1,2),legend=c("Observed Data", "Model Predictions"))
+    
+regression_residuals = as.numeric(as.numeric(time_series_data[1:200])-linear_model$fitted.values)
+
+par(mfrow=c(2,2))
+plot(regression_residuals, 
+     xlab="Time", ylab="Residuals", main="Time Series Plot of Residuals From Standard Regression",
+     type="l")
+acf(regression_residuals, main="ACF Plot of Residuals From Standard Regression")
+pacf(regression_residuals, main="PACF Plot of Residuals From Standard Regression")
+```
+
+```{r }
+# Time series method
+
+time_predictor = 1:200
+
+#Step 1: check for the k of AR(K):
+pacf(regression_residuals, main="PACF Plot of Residuals From Standard Regression")
+#--------------------
+
+#step 2 (model selection): Make different ARMA models based on a reagion around K in step 1, and choose q = 0 , 1, 2, ... (try the model as simple as possible but not simpler!!!)
+ # arima(1,0,2) simulates ARMA(1,2)
+time_series_model = arima(training_data, xreg=time_predictor, order=c(1,0,0))
+summary(time_series_model)
+time_series_model = arima(training_data, xreg=time_predictor, order=c(1,0,1))
+summary(time_series_model)
+time_series_model = arima(training_data, xreg=time_predictor, order=c(1,0,2))
+summary(time_series_model)
+
+time_series_model = arima(training_data, xreg=time_predictor, order=c(2,0,0))
+summary(time_series_model)
+time_series_model = arima(training_data, xreg=time_predictor, order=c(2,0,1))
+summary(time_series_model)
+time_series_model = arima(training_data, xreg=time_predictor, order=c(2,0,2))
+summary(time_series_model)
+
+time_series_model = arima(training_data, xreg=time_predictor, order=c(0,0,1))
+summary(time_series_model)
+time_series_model = arima(training_data, xreg=time_predictor, order=c(0,0,2))
+summary(time_series_model)
+###
+#compare AIC of models and choose the lowest AIC (choose the simpler model if you have multiple low AICs)
+#-----------------------------
+
+#step 3: run the selected model and get the summary and residulas
+time_series_model = arima(training_data, xreg=time_predictor, order=c(1,0,1))
+summary(time_series_model)
+regression_residuals = time_series_model$residuals 
+
+#step 4 (model diagnostics): 
+#Check residual plot, you should not see any correlation (e.g no trend)
+#check the AFC and PAFC of residuals: you shouldn't observe correlation. i.e. vertical lines between the blue lines
+par(mfrow=c(2,2))
+plot(regression_residuals, 
+     xlab="Time", ylab="Residuals", main="Time Series Plot of Residuals From ARMA(1,1)",
+     type="l")
+acf(regression_residuals, main="ACF Plot of Residuals From ARMA(1,1)")
+pacf(regression_residuals, main="PACF Plot of Residuals From ARMA(1,1)")
+
+
+#step 5: do the forecast for your desired data
+forecasts = predict(time_series_model,n.ahead=21, newxreg=(201:221))
+
+
+
+#step 6(optional): see the result from the training data
+predictions = training_data-as.numeric(time_series_model$residuals)
+
+plot(as.numeric(time_series_data[1:221]),
+     type="l",
+     xlab="Time", ylab="Price", main="Closing Stock Price for FORD: All Data")
+points(c(as.numeric(predictions), as.numeric(forecasts$pred)), type="l", lty=2)
+abline(v=201)
+legend(0,1.4,lty=c(1,2),legend=c("Observed Data", "Model Predictions"))
+
+
+#step 7 (optional): See the results from the testing data
+plot(as.numeric(test_data),
+     type="l",
+     xlab="Time", ylab="Price", main="Closing Stock Price for FORD: Test Data",
+     ylim=c(1,1.4))
+points(as.numeric(forecasts$pred), type="l", lty=2)
+legend(1,1.1,lty=c(1,2),legend=c("Observed Data", "Model Predictions"))
+
+
+
+
+```
+
+```{r}
+#other codes used in the lecture
+# Simulating MA(q) data
+
+number_of_observations = 500
+standard_deviation = 1
+theta_1 = 0.7
+theta_2 = 0.4
+theta_3 = 0.35
+Y_vector = rep(NA, number_of_observations)
+e_vector = rep(NA, number_of_observations)
+
+Y_0 = 0
+e_0 = 0
+
+# MA(1)
+e_vector = rnorm(number_of_observations, mean=0, sd=standard_deviation)
+Y_vector[1] = e_vector[1]
+for(i in 2:number_of_observations)
+{
+  Y_vector[i] = e_vector[i] + theta_1*e_vector[(i-1)]
+}
+
+par(mfrow=c(1,2))
+plot(Y_vector, xlab="Time", ylab="Outcome", main="Example of MA(1) Data", type="l")
+acf(Y_vector, main="ACF Plot for MA(1) Data")
+
+# MA(2)
+e_vector = rnorm(number_of_observations, mean=0, sd=standard_deviation)
+Y_vector[1] = e_vector[1]
+Y_vector[2] = e_vector[2]+theta_1*e_vector[1]
+for(i in 3:number_of_observations)
+{
+  Y_vector[i] = e_vector[i] + theta_1*e_vector[(i-1)] + theta_2*e_vector[(i-2)]
+}
+
+par(mfrow=c(1,2))
+plot(Y_vector, xlab="Time", ylab="Outcome", main="Example of MA(2) Data", type="l")
+acf(Y_vector, main="ACF Plot for MA(2) Data")
+
+# MA(3)
+e_vector = rnorm(number_of_observations, mean=0, sd=standard_deviation)
+Y_vector[1] = e_vector[1]
+Y_vector[2] = e_vector[2]+theta_1*e_vector[1]
+Y_vector[3] = e_vector[3]+theta_1*e_vector[2]+theta_2*e_vector[1]
+for(i in 4:number_of_observations)
+{
+  Y_vector[i] = e_vector[i] + theta_1*e_vector[(i-1)] + theta_2*e_vector[(i-2)] + theta_3*e_vector[(i-3)]
+}
+
+par(mfrow=c(1,2))
+plot(Y_vector, xlab="Time", ylab="Outcome", main="Example of MA(3) Data", type="l")
+acf(Y_vector, main="ACF Plot for MA(3) Data")
+
+
+# Simulating AR(k) data
+
+number_of_observations = 5000
+standard_deviation = 0.01
+rho_1 = 0.5
+rho_2 = 0.1
+rho_3 = 0.05
+Y_vector = rep(NA, number_of_observations)
+e_vector = rep(NA, number_of_observations)
+
+Y_0 = 0
+e_0 = 0
+
+# AR(1)
+e_vector = rnorm(number_of_observations, mean=0, sd=standard_deviation)
+Y_vector[1] = e_vector[1]
+for(i in 2:number_of_observations)
+{
+  Y_vector[i] = rho_1*Y_vector[(i-1)]+e_vector[i]
+}
+
+par(mfrow=c(2,2))
+plot(Y_vector, xlab="Time", ylab="Outcome", main="Example of AR(1) Data", type="l")
+acf(Y_vector, main="ACF Plot for AR(1) Data")
+pacf(Y_vector, main="PACF Plot for AR(1) Data")
+
+# AR(2)
+e_vector = rnorm(number_of_observations, mean=0, sd=standard_deviation)
+Y_vector[1] = e_vector[1]
+Y_vector[2] = rho_1*Y_vector[1]+e_vector[2]
+for(i in 3:number_of_observations)
+{
+  Y_vector[i] = rho_1*Y_vector[(i-1)]+rho_2*Y_vector[(i-2)]+e_vector[i]
+}
+
+
+par(mfrow=c(2,2))
+plot(Y_vector, xlab="Time", ylab="Outcome", main="Example of AR(2) Data", type="l")
+acf(Y_vector, main="ACF Plot for AR(2) Data")
+pacf(Y_vector, main="PACF Plot for AR(2) Data")
+
+# AR(3)
+e_vector = rnorm(number_of_observations, mean=0, sd=standard_deviation)
+Y_vector[1] = e_vector[1]
+Y_vector[2] = rho_1*Y_vector[1]+e_vector[2]
+Y_vector[3] = rho_1*Y_vector[2]+rho_2*Y_vector[1]+e_vector[3]
+for(i in 4:number_of_observations)
+{
+  Y_vector[i] = rho_1*Y_vector[(i-1)]+rho_2*Y_vector[(i-2)]+rho_3*Y_vector[(i-3)]+e_vector[i]
+}
+
+
+par(mfrow=c(2,2))
+plot(Y_vector, xlab="Time", ylab="Outcome", main="Example of AR(3) Data", type="l")
+acf(Y_vector, main="ACF Plot for AR(3) Data")
+pacf(Y_vector, main="PACF Plot for AR(3) Data")
+
+```
+
+```{r}
+
+```
+

@@ -1,0 +1,150 @@
+---
+title: "ARMA_exercise"
+author: "Zahra Sajedinia"
+date: '2022-06-27'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r }
+library(TSA)
+library(forecast)
+library(quantmod)
+
+```
+
+```{r }
+# Get stock data
+
+getSymbols("FORD",src="yahoo",from="2014-01-01",to = "2014-12-31")
+head(FORD)
+plot(FORD$FORD.Close, main="Closing Stock Price for FORD")
+
+time_series_data = FORD$FORD.Close
+
+
+training_data = time_series_data[1:200]
+test_data = time_series_data[201:221]
+
+#plot(time_series_data,
+#     type="l",
+#     xlab="Time", ylab="Price", main="Closing Stock Price for FORD")
+```
+
+```{r }
+# Simple method (Regression)
+
+time_predictor = 1:200
+linear_model = lm(training_data~time_predictor)
+summary(linear_model)
+
+test_predictions = linear_model$coefficients[1] + linear_model$coefficients[2]*(201:221)
+
+plot(as.numeric(test_data$FORD.Close),
+     type="l",
+     xlab="Time", ylab="Price", main="Closing Stock Price for FORD: Test Data",
+     ylim=c(1,1.4))
+points(test_predictions, type="l", lty=2)
+legend(1,1.1,lty=c(1,2),legend=c("Observed Data", "Model Predictions"))
+       
+
+all_predictions = linear_model$coefficients[1] + linear_model$coefficients[2]*(1:221)
+
+plot(as.numeric(time_series_data[1:221]),
+     type="l",
+     xlab="Time", ylab="Price", main="Closing Stock Price for FORD")
+points(all_predictions, type="l", lty=2)
+abline(v=201)
+legend(0,1.4,lty=c(1,2),legend=c("Observed Data", "Model Predictions"))
+    
+regression_residuals = as.numeric(as.numeric(time_series_data[1:200])-linear_model$fitted.values)
+
+par(mfrow=c(2,2))
+plot(regression_residuals, 
+     xlab="Time", ylab="Residuals", main="Time Series Plot of Residuals From Standard Regression",
+     type="l")
+acf(regression_residuals, main="ACF Plot of Residuals From Standard Regression")
+pacf(regression_residuals, main="PACF Plot of Residuals From Standard Regression")
+```
+
+```{r }
+# Time series method
+
+time_predictor = 1:200
+
+#Step 1: check for the k of AR(K):
+pacf(regression_residuals, main="PACF Plot of Residuals From Standard Regression")
+#--------------------
+
+#step 2 (model selection): Make different ARMA models based on a reagion around K in step 1, and choose q = 0 , 1, 2, ... (try the model as simple as possible but not simpler!!!)
+ # arima(1,0,2) simulates ARMA(1,2)
+time_series_model = arima(training_data, xreg=time_predictor, order=c(1,0,0))
+summary(time_series_model)
+time_series_model = arima(training_data, xreg=time_predictor, order=c(1,0,1))
+summary(time_series_model)
+time_series_model = arima(training_data, xreg=time_predictor, order=c(1,0,2))
+summary(time_series_model)
+
+time_series_model = arima(training_data, xreg=time_predictor, order=c(2,0,0))
+summary(time_series_model)
+time_series_model = arima(training_data, xreg=time_predictor, order=c(2,0,1))
+summary(time_series_model)
+time_series_model = arima(training_data, xreg=time_predictor, order=c(2,0,2))
+summary(time_series_model)
+
+time_series_model = arima(training_data, xreg=time_predictor, order=c(0,0,1))
+summary(time_series_model)
+time_series_model = arima(training_data, xreg=time_predictor, order=c(0,0,2))
+summary(time_series_model)
+###
+#compare AIC of models and choose the lowest AIC (choose the simpler model if you have multiple low AICs)
+#-----------------------------
+
+#step 3: run the selected model and get the summary and residulas
+time_series_model = arima(training_data, xreg=time_predictor, order=c(1,0,1))
+summary(time_series_model)
+regression_residuals = time_series_model$residuals 
+
+#step 4 (model diagnostics): 
+#Check residual plot, you should not see any correlation (e.g no trend)
+#check the AFC and PAFC of residuals: you shouldn't observe correlation. i.e. vertical lines between the blue lines
+par(mfrow=c(2,2))
+plot(regression_residuals, 
+     xlab="Time", ylab="Residuals", main="Time Series Plot of Residuals From ARMA(1,1)",
+     type="l")
+acf(regression_residuals, main="ACF Plot of Residuals From ARMA(1,1)")
+pacf(regression_residuals, main="PACF Plot of Residuals From ARMA(1,1)")
+
+
+#step 5: do the forecast for your desired data
+forecasts = predict(time_series_model,n.ahead=21, newxreg=(201:221))
+
+
+
+#step 6(optional): see the result from the training data
+predictions = training_data-as.numeric(time_series_model$residuals)
+
+plot(as.numeric(time_series_data[1:221]),
+     type="l",
+     xlab="Time", ylab="Price", main="Closing Stock Price for FORD: All Data")
+points(c(as.numeric(predictions), as.numeric(forecasts$pred)), type="l", lty=2)
+abline(v=201)
+legend(0,1.4,lty=c(1,2),legend=c("Observed Data", "Model Predictions"))
+
+
+#step 7 (optional): See the results from the testing data
+plot(as.numeric(test_data),
+     type="l",
+     xlab="Time", ylab="Price", main="Closing Stock Price for FORD: Test Data",
+     ylim=c(1,1.4))
+points(as.numeric(forecasts$pred), type="l", lty=2)
+legend(1,1.1,lty=c(1,2),legend=c("Observed Data", "Model Predictions"))
+
+
+
+
+```
